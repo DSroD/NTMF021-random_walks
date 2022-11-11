@@ -1,3 +1,6 @@
 /target*
 /walk.*
-/futhark/lib
+/futhark/*
+-/futhark/walk.fut
+-/futhark/futhark.pkg
+/plot

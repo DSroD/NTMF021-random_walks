@@ -1,4 +1,8 @@
 -- https://futhark-lang.org/
+
+-- ==
+-- compiled input {1111 0 0 500i64 1000 1000}
+
 import "lib/github.com/diku-dk/cpprandom/random"
 module dist = uniform_int_distribution u8 minstd_rand
 
@@ -73,7 +77,7 @@ def get_opposite_dir (dir: u8): u8 =
 
 -- simple walk
 def simple_walk dir_range (length: i32) rng =
-    loop (rng_state, pos) = (rng, zero) for _i < length do
+    loop (rng_state, pos) = (rng, copy zero) for _i < length do
         let (state, next) = dist.rand dir_range rng_state
         in (state, step next pos)
 
@@ -85,7 +89,7 @@ def gen_simple_walk dir_range num_buckets bucket_size rng =
 
 -- no returns walk
 def no_returns_walk dir_range (length: i32) rng =
-    loop (rng_state, last_dir, pos) = (rng, 0, zero) for _i < length do
+    loop (rng_state, last_dir, pos) = (rng, 0, copy zero) for _i < length do
         let forbidden_dir = get_opposite_dir last_dir -- We can not move in this direction
         let (state, generated) = dist.rand dir_range rng_state
         let dir = if generated == forbidden_dir then (dir_range.1 + 1) else generated
@@ -100,9 +104,10 @@ def gen_no_returns_walk dir_range num_buckets bucket_size rng =
 -- generate n walks given and bucket size and number of buckets (walk length = num_buckets * bucket_size) and return their distances
 def gen_n_walk_distances rng (walk_type: walk_type) (grid_type: grid_type) n num_buckets bucket_size: [n]f64 =
     let dir_range = get_dir_range grid_type 
+    let rngs = minstd_rand.split_rng n rng
     let final_point = match walk_type
-        case #simple -> minstd_rand.split_rng n rng |> map (gen_simple_walk (unsign8 dir_range) num_buckets bucket_size)
-        case #no_returns -> minstd_rand.split_rng n rng |> map (gen_no_returns_walk (add2 (-1) dir_range |> unsign8) num_buckets bucket_size)
+        case #simple -> rngs |> map (gen_simple_walk (unsign8 dir_range) num_buckets bucket_size)
+        case #no_returns -> rngs |> map (gen_no_returns_walk (add2 (-1) dir_range |> unsign8) num_buckets bucket_size)
     in match grid_type
         case #square -> map norm final_point
         case #triangular -> map tirangular_norm final_point
