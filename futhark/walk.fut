@@ -72,10 +72,8 @@ def step (dir: u8) (pt: point) =
 -- 0 <-> 1; 2 <-> 3; 4 <-> 5; ...
 -- this exactly corresponds to not being able to return to the previous coordinate 
 -- (see 'step' function above and pay attention to -1 and +1 in get_opposite_dir function)
-def get_opposite_dir (grid_type: grid_type) (dir: u8): u8 =
-    match grid_type
-        case #hexagonal -> if dir == 3 then 3 else ((dir - 1) ^ 1) + 1
-        case _ -> ((dir - 1) ^ 1) + 1
+def get_opposite_dir (dir: u8): u8 =
+    ((dir - 1) ^ 1) + 1
 
 -- simple walk
 def simple_walk dir_range (length: i32) rng =
@@ -90,16 +88,16 @@ def gen_simple_walk dir_range num_buckets bucket_size rng =
     |> reduce_comm add_pt zero 
 
 -- no returns walk
-def no_returns_walk grid_type dir_range (length: i32) rng =
-    loop (rng_state, last_dir, pos) = (rng, 0, copy zero) for _i < length do
-        let forbidden_dir = get_opposite_dir grid_type last_dir -- We can not move in this direction
+def no_returns_walk dir_range (length: i32) rng =
+    loop (rng_state, last_dir, pos) = (rng, 99, copy zero) for _i < length do
+        let forbidden_dir = get_opposite_dir last_dir -- We can not move in this direction
         let (state, generated) = dist.rand dir_range rng_state
         let dir = if generated == forbidden_dir then (dir_range.1 + 1) else generated
         in (state, dir, step dir pos)
 
-def gen_no_returns_walk grid_type dir_range num_buckets bucket_size rng =
+def gen_no_returns_walk dir_range num_buckets bucket_size rng =
     minstd_rand.split_rng (i64.i32 num_buckets) rng 
-    |> map (no_returns_walk grid_type dir_range bucket_size) 
+    |> map (no_returns_walk dir_range bucket_size) 
     |> map (\l -> l.2) 
     |> reduce_comm add_pt zero
 
@@ -109,7 +107,7 @@ def gen_n_walk_distances rng (walk_type: walk_type) (grid_type: grid_type) n num
     let rngs = minstd_rand.split_rng n rng
     let final_point = match walk_type
         case #simple -> rngs |> map (gen_simple_walk (unsign8 dir_range) num_buckets bucket_size)
-        case #no_returns -> rngs |> map (gen_no_returns_walk grid_type (add2 (-1) dir_range |> unsign8) num_buckets bucket_size)
+        case #no_returns -> rngs |> map (gen_no_returns_walk (add2 (-1) dir_range |> unsign8) num_buckets bucket_size)
     in match grid_type
         case #square -> map norm final_point
         case #triangular -> map tirangular_norm final_point
