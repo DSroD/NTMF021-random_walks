@@ -48,7 +48,7 @@ def hexagonal_norm (pt: point) =
 
 -- associative and commutative operation with (0, 0) as a neutral element - can be parallelized using SOACs
 def add_pt (pt1: point) (pt2: point) =
-    {x = pt1.x + pt2.y, y = pt1.x + pt2.y}
+    {x = pt1.x + pt2.x, y = pt1.y + pt2.y}
 
 -- adds to the second parameter in a u8 tuple
 def add2 x (t: (i8, i8)) = (t.0, t.1 + x)
@@ -59,9 +59,9 @@ def step (dir: u8) (pt: point) =
         case 1 -> pt with x = pt.x + 1
         case 2 -> pt with x = pt.x - 1
         -- hexagonal grid is dual to triangular tiling - we use coordinates of triangular tiles
-        case 3 -> pt with y = if pt.x + pt.y % 2 == 0 then pt.y + 1 else pt.y - 1
+        case 3 -> pt with y = if (pt.x + pt.y) % 2 == 0 then pt.y + 1 else pt.y - 1
         -- complement for non-triangular grids
-        case 4 -> pt with y = if pt.x + pt.y % 2 == 0 then pt.y - 1 else pt.y + 1
+        case 4 -> pt with y = if (pt.x + pt.y) % 2 == 0 then pt.y - 1 else pt.y + 1
         -- triangular grid is dual to hexagonal tiling so axial coordinates for
         -- hexagonal tiling can be used, see https://www.redblobgames.com/grids/hexagons/
         case 5 -> {x = pt.x + 1, y = pt.y - 1}
@@ -72,8 +72,10 @@ def step (dir: u8) (pt: point) =
 -- 0 <-> 1; 2 <-> 3; 4 <-> 5; ...
 -- this exactly corresponds to not being able to return to the previous coordinate 
 -- (see 'step' function above and pay attention to -1 and +1 in get_opposite_dir function)
-def get_opposite_dir (dir: u8): u8 =
-    ((dir - 1) ^ 1) + 1
+def get_opposite_dir (grid_type: grid_type) (dir: u8): u8 =
+    match grid_type
+        case #hexagonal -> if dir == 3 then 3 else ((dir - 1) ^ 1) + 1
+        case _ -> ((dir - 1) ^ 1) + 1
 
 -- simple walk
 def simple_walk dir_range (length: i32) rng =
@@ -88,16 +90,16 @@ def gen_simple_walk dir_range num_buckets bucket_size rng =
     |> reduce_comm add_pt zero 
 
 -- no returns walk
-def no_returns_walk dir_range (length: i32) rng =
+def no_returns_walk grid_type dir_range (length: i32) rng =
     loop (rng_state, last_dir, pos) = (rng, 0, copy zero) for _i < length do
-        let forbidden_dir = get_opposite_dir last_dir -- We can not move in this direction
+        let forbidden_dir = get_opposite_dir grid_type last_dir -- We can not move in this direction
         let (state, generated) = dist.rand dir_range rng_state
         let dir = if generated == forbidden_dir then (dir_range.1 + 1) else generated
         in (state, dir, step dir pos)
 
-def gen_no_returns_walk dir_range num_buckets bucket_size rng =
+def gen_no_returns_walk grid_type dir_range num_buckets bucket_size rng =
     minstd_rand.split_rng (i64.i32 num_buckets) rng 
-    |> map (no_returns_walk dir_range bucket_size) 
+    |> map (no_returns_walk grid_type dir_range bucket_size) 
     |> map (\l -> l.2) 
     |> reduce_comm add_pt zero
 
@@ -107,7 +109,7 @@ def gen_n_walk_distances rng (walk_type: walk_type) (grid_type: grid_type) n num
     let rngs = minstd_rand.split_rng n rng
     let final_point = match walk_type
         case #simple -> rngs |> map (gen_simple_walk (unsign8 dir_range) num_buckets bucket_size)
-        case #no_returns -> rngs |> map (gen_no_returns_walk (add2 (-1) dir_range |> unsign8) num_buckets bucket_size)
+        case #no_returns -> rngs |> map (gen_no_returns_walk grid_type (add2 (-1) dir_range |> unsign8) num_buckets bucket_size)
     in match grid_type
         case #square -> map norm final_point
         case #triangular -> map tirangular_norm final_point

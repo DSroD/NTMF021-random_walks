@@ -4,13 +4,21 @@ version = "0.1.0"
 edition = "2021"
 build = "build.rs"
 
+[profile.release-nofut]
+inherits = "release"
+build = "build_no_fut.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 rand = "0.8.5"
 libmath = "0.2.1"
+GSL = "6.0.0"
 crossterm = "0.25.0"
 plotly = "0.8.3"
+clap = { version = "4.0.23", features = ["derive"] }
+serde = "1.0.147"
+serde_json = "1.0.87"
 
 [build-dependencies]
 futhark-bindgen = {git = "https://github.com/zshipko/futhark-bindgen", default-features=false, features=["build"]}
