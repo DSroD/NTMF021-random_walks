@@ -1,3 +1,5 @@
+mod walks;
+
 use std::str::FromStr;
 use std::fmt::{Debug, Display};
 use plotly::common::{HoverInfo, ErrorData, ErrorType};
@@ -6,6 +8,7 @@ use rand::Rng;
 use rgsl::fit::linear_est;
 use rgsl::{fit, Value};
 use serde::Deserialize;
+use walks::{WalkParams, WalkResult, FitResult};
 use std::io::{stdin, stdout};
 use std::fs;
 use plotly::{Plot, Scatter, Layout};
@@ -15,108 +18,9 @@ use crossterm::terminal::{Clear, ClearType};
 use crossterm::style::Stylize;
 use clap::Parser;
 
+use crate::walks::{SeqType, WalkType, GridType};
+
 include!(concat!(env!("OUT_DIR"), "/walk.rs"));
-
-const COULD_NOT_PARSE: &'static str = "Could not parse";
-
-#[derive(Debug, Clone, Copy, Deserialize)]
-enum WalkType {
-    Simple = 0,
-    NoReturns = 1
-}
-
-impl Display for WalkType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Simple => write!(f, "Simple"),
-            Self::NoReturns => write!(f, "No Immediate Returns")
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Deserialize)]
-enum GridType {
-    Square = 0,
-    Triangular = 1,
-    Hexagonal = 2
-}
-
-impl Display for GridType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Square => write!(f, "Square"),
-            Self::Triangular => write!(f, "Triangular"),
-            Self::Hexagonal => write!(f, "Hexagonal")
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
-enum SeqType {
-    Arithmetic = 0,
-    Geometric = 1,
-}
-
-impl Display for SeqType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Arithmetic => write!(f, "Arithmetic"),
-            Self::Geometric => write!(f, "Geometric")
-        }
-    }
-}
-
-impl FromStr for WalkType {
-    type Err = &'static str;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "0" => Ok(Self::Simple),
-            "1" => Ok(Self::NoReturns),
-            _ => Err(COULD_NOT_PARSE)
-        }
-    }
-}
-
-impl FromStr for GridType {
-    type Err = &'static str;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "0" => Ok(Self::Square),
-            "1" => Ok(Self::Triangular),
-            "2" => Ok(Self::Hexagonal),
-            _ => Err(COULD_NOT_PARSE)
-        }
-    }
-}
-
-impl FromStr for SeqType {
-    type Err = &'static str;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "0" => Ok(Self::Arithmetic),
-            "1" => Ok(Self::Geometric),
-            _ => Err(COULD_NOT_PARSE)
-        }
-    }
-}
-
-#[derive(Deserialize)]
-struct WalkParams {
-    seed: i32,
-    walk_type: WalkType,
-    grid_type: GridType,
-    num_walks_coef: f64,
-    seq_type: SeqType,
-    start_seq: i32,
-    arithm_step: i32,
-    geom_step: f64,
-    num_steps: i32,
-    steps_per_sample: i32,
-    trace_name: String
-}
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -157,43 +61,26 @@ fn gen_geometric(a0: i32, q: f64, num: i32) -> Vec<i32> {
 fn rewrite_params(walk_params: &mut WalkParams) {
     input(&mut walk_params.seed, &["Seed:"]);
     input(&mut walk_params.walk_type, &["Walk type:", "0 - Simple walk", "1 - No immediate retuns"]);
-    input(&mut walk_params.grid_type, &["Grid type:", "0 - Square grid", "1 - Triangular grid", "2 - Hexagonal grid"]);
+    input(&mut walk_params.grid_type, &["Grid type:", "0 - Square grid", "1 - Triangular grid"]);
     input(&mut walk_params.num_walks_coef, &["Number of walks coef (sqrt(walk_length) * coef = total_num_walks):"]);
     input(&mut walk_params.seq_type, &["Sequence type:", "0 - Arithmetic", "1 - Geometric"]);
-    input(&mut walk_params.start_seq, &["Initial bucket count:"]);
+    input(&mut walk_params.start_seq, &["Initial step count:"]);
     if walk_params.seq_type == SeqType::Arithmetic {
-        input(&mut walk_params.arithm_step, &["Bucket count increase:"]);
+        input(&mut walk_params.arithm_step, &["Step count increase:"]);
     }
     else {
-        input(&mut walk_params.geom_step, &["Bucket count increase quotient:"]);
+        input(&mut walk_params.geom_step, &["Step count increase quotient:"]);
     }
     input(&mut walk_params.num_steps, &["Number of increase steps:"]);
-    input(&mut walk_params.steps_per_sample, &["Steps performed in bucket:"]);
-
     println!("Trace name:");
     walk_params.trace_name.clear();
     stdin().read_line(&mut walk_params.trace_name).expect("Could not read input");
 
 }
 
-struct WalkResult {
-    num_steps: i32,
-    num_walks: i64,
-    mean: f64,
-    stderr: f64
-}
-
-struct FitResult {
-    c0: f64,
-    c1: f64,
-    cov00: f64,
-    cov01: f64,
-    cov11: f64,
-    sumsq: f64
-}
-
 fn generate_walk(
-    walk_params: &WalkParams
+    walk_params: &WalkParams,
+    ctx: &Context
 ) -> Vec<WalkResult> {
 
     let bucket_counts = match walk_params.seq_type {
@@ -202,24 +89,24 @@ fn generate_walk(
     };
     
     let walk_counts = bucket_counts.iter()
-    .map(|x| (((x * walk_params.steps_per_sample) as f64).sqrt() * walk_params.num_walks_coef).ceil().max(500.0) as i64)
+    .map(|x| ((*x as f64).sqrt() * walk_params.num_walks_coef).ceil().max(500.0) as i64)
     .collect::<Vec<i64>>();
 
     println!("");
     println!("Walking....");
 
     let mut stdout = stdout();
-    let ctx = Context::new().unwrap();
 
     bucket_counts.iter()
         .zip(&walk_counts)
         .enumerate()
-        .map(|(i, (num_bucket, wc))| {
+        .map(|(i, (num_steps, wc))| {
                 let str = format!("{} / {}", i+1, bucket_counts.len());
                 execute!(stdout, Clear(ClearType::CurrentLine), cursor::MoveToColumn(0) ,style::PrintStyledContent(str.as_str().magenta())).expect("Error printing results...");
-                let (mean, stderr) = ctx.one_walk(walk_params.seed, walk_params.walk_type as i32, walk_params.grid_type as i32, *wc, *num_bucket, walk_params.steps_per_sample).unwrap();
+                // let (mean, stderr) = ctx.one_walk(walk_params.seed, walk_params.walk_type as i32, walk_params.grid_type as i32, *wc, *num_bucket, walk_params.steps_per_sample).unwrap();
+                let (mean, stderr) = ctx.walk (walk_params.seed, walk_params.walk_type as i32, walk_params.grid_type as i32, *wc, *num_steps).unwrap();
                 WalkResult {
-                    num_steps: *num_bucket * walk_params.steps_per_sample,
+                    num_steps: *num_steps,
                     num_walks: *wc,
                     mean: mean,
                     stderr: stderr
@@ -232,7 +119,7 @@ fn add_trace(plot: &mut Plot, trace: &Vec<WalkResult>, walk_params: &WalkParams)
     
     let xs = trace.iter().map(|x| x.num_steps);
     let means = trace.iter().map(|x| x.mean);
-    let stderr = trace.iter().map(|x| x.stderr.sqrt());
+    let stderr = trace.iter().map(|x| (x.stderr * x.num_walks as f64 / (x.num_walks - 1) as f64).sqrt());
     let trace_mean = Scatter::new(xs.collect(), means.collect())
         .name(format!("{} (Walk type: {}, Grid type: {})", walk_params.trace_name, walk_params.walk_type, walk_params.grid_type))
         .show_legend(true)
@@ -244,8 +131,18 @@ fn add_trace(plot: &mut Plot, trace: &Vec<WalkResult>, walk_params: &WalkParams)
         .error_y(
             ErrorData::new(ErrorType::Data)
             .array(stderr.collect())
+            .thickness(0.0)
         );
+
+    let d = trace.iter().map(|x| x.num_steps).chain(trace.iter().map(|x| x.num_steps).rev());
+    let s_up = trace.iter().map(|x| x.mean + (x.stderr * x.num_walks as f64 / (x.num_walks - 1) as f64).sqrt());
+    let s_down = trace.iter().map(|x| x.mean - (x.stderr * x.num_walks as f64 / (x.num_walks - 1) as f64).sqrt());
+    let trace_stderr = Scatter::new(d.collect(), s_up.chain(s_down.rev()).collect())
+            .fill(plotly::common::Fill::ToSelf)
+            .name(format!("stderr {}", walk_params.trace_name))
+            .hover_info(plotly::common::HoverInfo::Skip);
     plot.add_trace(trace_mean);
+    plot.add_trace(trace_stderr);
 }
 
 fn fit_log_data(trace: &Vec<WalkResult>, trace_name: &str) -> Result<FitResult, String> {
@@ -305,15 +202,16 @@ fn manual(mut plot: &mut Plot, mut plot_loglog: &mut Plot, mut input_buff: &mut 
         arithm_step: 5,
         geom_step: 1.1,
         num_steps: 100,
-        steps_per_sample: 100,
         trace_name: String::with_capacity(40),
     };
+
+    let ctx = Context::new().unwrap();
 
     loop {
         // Modify params
         rewrite_params(&mut walk_params);
         // Generate walk
-        let results = generate_walk(&walk_params);
+        let results = generate_walk(&walk_params, &ctx);
         // Add to trace
         add_trace(&mut plot, &results, &walk_params);
         add_trace(&mut plot_loglog, &results, &walk_params);
@@ -349,9 +247,10 @@ fn manual(mut plot: &mut Plot, mut plot_loglog: &mut Plot, mut input_buff: &mut 
 }
 
 fn auto(configs: RunConfig, mut plot: &mut Plot, mut plot_loglog: &mut Plot) {
+    let ctx = Context::new().unwrap();
     for walk_params in configs.walks {
         // Generate walk
-        let results = generate_walk(&walk_params);
+        let results = generate_walk(&walk_params, &ctx);
         // Add to trace
         add_trace(&mut plot, &results, &walk_params);
         add_trace(&mut plot_loglog, &results, &walk_params);
