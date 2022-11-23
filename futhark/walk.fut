@@ -36,27 +36,17 @@ def add_pt (pt1: point) (pt2: point) =
 def add2 x (t: (i8, i8)) = (t.0, t.1 + x)
 def unsign8 (t: (i8, i8)) = (u8.i8 t.0, u8.i8 t.1)
 
-def step2 (dir: u8) =
+def step (dir: u8) =
     match dir
         case 1 -> {x = 1, y = 0}
         case 2 -> {x = -1, y = 0}
         case 3 -> {x = 0, y = 1}
-        case 4 ->{x = 0, y = -1}
+        case 4 -> {x = 0, y = -1}
         -- triangular grid is dual to hexagonal tiling so axial coordinates for
         -- hexagonal tiling can be used, see https://www.redblobgames.com/grids/hexagons/
         case 5 -> {x = 1, y = -1}
         case 6 -> {x = -1, y = 1}
-        case _ -> copy zero
-
-def step (dir: u8) (pt: point) =
-    match dir
-        case 1 -> {x = pt.x + 1, y = pt.y}
-        case 2 -> {x = pt.x - 1, y = pt.y}
-        case 3 -> {x = pt.x, y = pt.y + 1}
-        case 4 -> {x = pt.x, y = pt.y - 1}
-        case 5 -> {x = pt.x + 1, y = pt.y - 1}
-        case 6 -> {x = pt.x - 1, y = pt.y + 1}
-        case _ -> pt
+        case _ -> zero
 
 -- XOR ing with 1 bitwise swaps LSB -> this swaps
 -- 0 <-> 1; 2 <-> 3; 4 <-> 5; ...
@@ -67,7 +57,7 @@ def get_opposite_dir (dir: u8): u8 =
 
 -- simple walk
 def simple_walk dir_range (length: i32) rng =
-    pcg32.split_rng (i64.i32 length) rng |> map (dist.rand dir_range) |> map (\l -> l.1) |> map step2 |> reduce_comm add_pt (zero)
+    pcg32.split_rng (i64.i32 length) rng |> map (dist.rand dir_range) |> map (\l -> l.1) |> map step |> reduce_comm add_pt (zero)
 
 -- no returns walk
 def no_returns_walk dir_range (length: i32) rng =
@@ -75,7 +65,7 @@ def no_returns_walk dir_range (length: i32) rng =
         let forbidden_dir = get_opposite_dir last_dir -- We can not move in this direction
         let (state, generated) = dist.rand dir_range rng_state
         let dir = if generated == forbidden_dir then (dir_range.1 + 1) else generated
-        in (state, dir, step dir pos)
+        in (state, dir, add_pt (step dir) pos)
 
 -- generate n walks of given length and return euclidean distance walked
 def n_walks_distances rng (walk_type: walk_type) (grid_type: grid_type) n length: [n]f64 =

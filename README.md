@@ -7,6 +7,9 @@ Parallel computation of 2D random walks on square / triangular / hexagonal grids
 Futhark part parallely computes many random walks of given length and returns mean euclidean distance from initial point (and variance).
 Rust part calls Futhark code, plots results to interactive graphs using plotly and computes linear fit of dependence of log (distance) on log (length).
 
+Run with `-c <filename>` or `--config <filename>` to run walks predefined in configuration file (see `config.json`  or `config_small.json` for example configuration files).
+Running without this parameter starts interactive mode.
+
 ## Requirements
 ### Build
 - [Rust toolchain](https://www.rust-lang.org/tools/install)
@@ -27,3 +30,4 @@ Available backends are:
 - ispc
 
 When backend parameter is not specified, sequential C backend is used.
+Built executable can be found in `target-[backend]/release/random_walks`
