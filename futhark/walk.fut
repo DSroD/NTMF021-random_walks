@@ -108,3 +108,14 @@ entry walk seed walk_type_n grid_type_n num_walks length =
     let mean = mean distances
     let std = variance distances
     in (mean, std)
+
+entry many_walks [n] seed (walk_type_n: i32) (grid_type_n: i32) (num_walks: [n]i64) (lengths: [n]i32) =
+    let walk_type = get_walk_type walk_type_n
+    let grid_type = get_grid_type grid_type_n
+    let rngs = pcg32.rng_from_seed [seed] |> pcg32.split_rng n
+    in map3  (\seed num_walk length -> 
+                n_walks_distances seed walk_type grid_type num_walk length 
+                |> \d -> [mean d, variance d]
+            ) rngs num_walks lengths
+
+def main = many_walks
